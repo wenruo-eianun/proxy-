@@ -2,7 +2,7 @@
 自动化安装博客平台，配置服务器环境，申请SSL证书，以及让你在执行时输入域名、端口、Cloudflare的API信息等。
 ```base
 wget https://raw.githubusercontent.com/wenruo-eianun/proxy-/refs/heads/main/proxywebpath.sh
-bash installproxweb.sh
+bash proxywebpath.sh
 ```
 博客：
 ```
