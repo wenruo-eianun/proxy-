@@ -119,14 +119,6 @@ services:
       - "8443:443"
     restart: always
 
-  certbot:
-    image: certbot/certbot:latest
-    volumes:
-      - ./certs:/etc/letsencrypt
-      - ./certbot/conf:/etc/letsencrypt/conf
-      - ./certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h; done;'"
-
 volumes:
   db_data:
   wordpress_data:
@@ -196,29 +188,36 @@ server {
 }
 EOL
 
-# 创建 Cloudflare 凭据文件
-cat <<EOL > certbot/cloudflare.ini
+# 安装 acme.sh
+if ! [ -x "$(command -v acme.sh)" ]; then
+    echo "acme.sh 未安装，正在安装..."
+    curl https://get.acme.sh | sh
+    source ~/.bashrc
+else
+    echo "acme.sh 已安装，跳过安装步骤。"
+fi
+
+# 设置 Cloudflare 凭据
+cat <<EOL > ~/.acme.sh/cloudflare.ini
 dns_cloudflare_email = "$CLOUDFLARE_EMAIL"
 dns_cloudflare_api_key = "$CLOUDFLARE_API_KEY"
 EOL
 
-# 设置凭据文件权限
-chmod 600 certbot/cloudflare.ini
-
-# 启动 Docker Compose 并运行
-docker-compose up -d
+chmod 600 ~/.acme.sh/cloudflare.ini
 
 # 申请 SSL 证书
 echo "申请 SSL 证书..."
-docker-compose run --rm certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/conf/cloudflare.ini -d "$DOMAIN" --non-interactive --agree-tos --email "$CLOUDFLARE_EMAIL"
+~/.acme.sh/acme.sh --issue --dns dns_cf -d "$DOMAIN" --keylength ec-256 --agree-tos --email "$CLOUDFLARE_EMAIL"
 
-# 检查申请结果
-if [ $? -ne 0 ]; then
-    echo "SSL证书申请失败，请检查日志。"
-    exit 1
-fi
-# 重启 Nginx 以启用 SSL
-docker-compose restart nginx
+# 安装证书
+echo "安装 SSL 证书..."
+~/.acme.sh/acme.sh --install-cert -d "$DOMAIN" \
+    --key-file /etc/letsencrypt/live/$DOMAIN/privkey.pem \
+    --fullchain-file /etc/letsencrypt/live/$DOMAIN/fullchain.pem
+
+# 启动 Docker Compose 服务
+echo "启动 Docker Compose 服务..."
+docker-compose up -d
 
 # 输出证书路径和代理路径以便在 x-ui 面板中使用
 CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
@@ -231,3 +230,9 @@ echo "私钥路径: $KEY_PATH"
 echo "请将上述路径填写到 x-ui 面板中的证书和私钥字段。"
 echo "伪装站点博客访问地址: https://$DOMAIN"
 echo "代理流量路径为: $PROXY_URL"
+
+# 添加 acme.sh 自动续期
+echo "正在设置 acme.sh 自动续期..."
+(crontab -l 2>/dev/null; echo "0 0 * * * /root/.acme.sh/acme.sh --renew -d $DOMAIN --key-file /etc/letsencrypt/live/$DOMAIN/privkey.pem --fullchain-file /etc/letsencrypt/live/$DOMAIN/fullchain.pem > /var/log/acme_renew.log 2>&1") | crontab -
+
+echo "acme.sh 自动续期已设置成功！"
