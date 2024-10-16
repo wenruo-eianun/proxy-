@@ -67,7 +67,6 @@ fi
 # 获取用户输入
 read -p "请输入服务器解析的域名 (例如 example.com): " DOMAIN
 read -p "请输入博客所使用的端口 (80 或 443): " PORT
-read -p "请输入代理路径 (例如 /vless): " PROXY_PATH
 read -p "请输入Cloudflare的注册邮箱: " CLOUDFLARE_EMAIL
 read -p "请输入Cloudflare的Global API Key: " CLOUDFLARE_API_KEY
 
@@ -124,7 +123,7 @@ volumes:
   wordpress_data:
 EOL
 
-# 创建 nginx.conf 文件，添加路径分流规则
+# 创建 nginx.conf 文件，添加 SNI 分流规则
 cat <<EOL > nginx/nginx.conf
 server {
     listen 80;
@@ -134,15 +133,6 @@ server {
         root /wenruo/wordpress;
         index index.php index.html index.htm;
         try_files \$uri \$uri/ /index.php?\$args;
-    }
-
-    location $PROXY_PATH {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:3771; # 将 vless 代理请求转发到 V2Ray/Xray 监听的端口
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     location /.well-known/acme-challenge/ {
@@ -164,19 +154,22 @@ server {
     ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
 
+    # SNI 分流: 当 SNI 与域名相同时转发到代理服务
     location / {
+        if (\$ssl_server_name = "$DOMAIN") {
+            # 转发到 VLESS 代理服务
+            proxy_pass http://127.0.0.1:3771;  # 将 VLESS 代理请求转发到 V2Ray/Xray 监听的端口
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            break;  # 跳出当前 location
+        }
+
+        # 默认返回博客页面
         root /wenruo/wordpress;
         index index.php index.html index.htm;
         try_files \$uri \$uri/ /index.php?\$args;
-    }
-
-    location $PROXY_PATH {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:3771;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     location ~ \.php\$ {
@@ -187,6 +180,7 @@ server {
     }
 }
 EOL
+
 
 # 安装 acme.sh
 if ! [ -x "$(command -v acme.sh)" ]; then
@@ -229,7 +223,6 @@ echo "证书路径: $CERT_PATH"
 echo "私钥路径: $KEY_PATH"
 echo "请将上述路径填写到 x-ui 面板中的证书和私钥字段。"
 echo "伪装站点博客访问地址: https://$DOMAIN"
-echo "代理流量路径为: $PROXY_URL"
 
 # 添加 acme.sh 自动续期
 echo "正在设置 acme.sh 自动续期..."
