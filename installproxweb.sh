@@ -203,6 +203,9 @@ chmod 600 certbot/cloudflare.ini
 # 启动 Docker Compose 并运行
 docker-compose up -d
 
+# 确保进入正确目录申请 SSL 证书
+cd "$(dirname "$0")/docker-wordpress"
+
 # 申请 SSL 证书
 docker-compose run --rm certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/conf/cloudflare.ini -d $DOMAIN
 
