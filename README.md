@@ -5,7 +5,9 @@ wget https://raw.githubusercontent.com/wenruo-eianun/proxy-/refs/heads/main/inst
 bash installproxweb.sh
 ```
 博客：
-      WORDPRESS_DB_HOST: db:3306
-      WORDPRESS_DB_USER: wordpressuser
-      WORDPRESS_DB_PASSWORD: wordpresspass
-      WORDPRESS_DB_NAME: wordpress
+```
+WORDPRESS_DB_HOST: db:3306
+WORDPRESS_DB_USER: wordpressuser
+WORDPRESS_DB_PASSWORD: wordpresspass
+ORDPRESS_DB_NAME: wordpress
+```
