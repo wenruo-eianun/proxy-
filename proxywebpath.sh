@@ -217,8 +217,7 @@ chmod 600 ~/.secrets/certbot/cloudflare.ini
 
 # 申请 SSL 证书（使用 DNS-01 验证）
 echo "申请 SSL 证书..."
-certbot certonly --dns-cloudflare --dns-cloudflare-credentials ~/.secrets/certbot/cloudflare.ini --email "$CLOUDFLARE_EMAIL" --agree-tos --no-eff-email -d "$DOMAIN"
-
+certbot certonly --dns-cloudflare --dns-cloudflare-credentials ~/.secrets/certbot/cloudflare.ini --email "$CLOUDFLARE_EMAIL" --agree-tos --no-eff-email --preferred-challenges dns -d "$DOMAIN"
 # 输出证书路径和代理路径以便在 x-ui 面板中使用
 CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
 KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
@@ -230,9 +229,9 @@ echo "私钥路径: $KEY_PATH"
 echo "请将上述路径填写到 x-ui 面板中的证书和私钥字段。"
 echo "伪装站点博客访问地址: https://$DOMAIN"
 echo "代理流量路径为: $PROXY_URL"
+
 # 设置自动续期
 echo "正在设置 Certbot 自动续期..."
-(crontab -l 2>/dev/null; echo "0 0 * * * certbot renew --quiet") | crontab -
+(crontab -l 2>/dev/null; echo "0 0 * * * certbot renew --quiet --dns-cloudflare --dns-cloudflare-credentials ~/.secrets/certbot/cloudflare.ini") | crontab -
 
 echo "Certbot 自动续期已设置成功！"
-
