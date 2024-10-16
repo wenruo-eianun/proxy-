@@ -67,8 +67,8 @@ read -p "请输入Cloudflare的注册邮箱: " CLOUDFLARE_EMAIL
 read -p "请输入Cloudflare的Global API Key: " CLOUDFLARE_API_KEY
 
 # 创建项目文件夹
-mkdir -p docker-wordpress/{nginx,certbot}
-cd docker-wordpress
+mkdir -p wenruo/docker-wordpress/{nginx,certbot}
+cd wenruo/docker-wordpress
 
 # 创建 docker-compose.yml 文件，添加路径分流
 cat <<EOL > docker-compose.yml
@@ -78,7 +78,7 @@ services:
   db:
     image: mysql:5.7
     volumes:
-      - db_data:/var/lib/mysql
+      - db_data:/wenruo/mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root_password
@@ -91,7 +91,7 @@ services:
       - db
     image: wordpress:latest
     volumes:
-      - wordpress_data:/var/www/html
+      - wordpress_data:/wenruo/wordpress
     restart: always
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -108,10 +108,10 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./certs:/etc/letsencrypt/live/$DOMAIN
-      - wordpress_data:/var/www/html
+      - wordpress_data:/wenruo/wordpress
     ports:
-      - "80:80"
-      - "443:443"
+      - "8082:80"
+      - "8443:443"
     restart: always
 
   certbot:
@@ -134,7 +134,7 @@ server {
     server_name $DOMAIN;
 
     location / {
-        root /var/www/html;
+        root /wenruo/wordpress;
         index index.php index.html index.htm;
         try_files \$uri \$uri/ /index.php?\$args;
     }
@@ -168,7 +168,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
 
     location / {
-        root /var/www/html;
+        root /wenruo/wordpress;
         index index.php index.html index.htm;
         try_files \$uri \$uri/ /index.php?\$args;
     }
@@ -202,9 +202,6 @@ chmod 600 certbot/cloudflare.ini
 
 # 启动 Docker Compose 并运行
 docker-compose up -d
-
-# 确保进入正确目录申请 SSL 证书
-cd "$(dirname "$0")/docker-wordpress"
 
 # 申请 SSL 证书
 docker-compose run --rm certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/conf/cloudflare.ini -d $DOMAIN
