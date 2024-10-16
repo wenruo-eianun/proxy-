@@ -187,36 +187,28 @@ server {
     }
 }
 EOL
-
-# 安装 acme.sh
-if ! [ -x "$(command -v acme.sh)" ]; then
-    echo "acme.sh 未安装，正在安装..."
-    curl https://get.acme.sh | sh
-    source ~/.bashrc
-else
-    echo "acme.sh 已安装，跳过安装步骤。"
-fi
-
-# 设置 Cloudflare 凭据
-cat <<EOL > ~/.acme.sh/cloudflare.ini
-dns_cloudflare_email = "$CLOUDFLARE_EMAIL"
-dns_cloudflare_api_key = "$CLOUDFLARE_API_KEY"
-EOL
-
-chmod 600 ~/.acme.sh/cloudflare.ini
-
 # 申请 SSL 证书
 echo "申请 SSL 证书..."
-~/.acme.sh/acme.sh --issue --dns dns_cf -d "$DOMAIN" --keylength ec-256 --agree-tos --email "$CLOUDFLARE_EMAIL"
+docker run -it --rm \
+  -v /etc/letsencrypt:/etc/letsencrypt \
+  -v $(pwd)/certbot:/var/www/certbot \
+  certbot/certbot certonly \
+  --webroot \
+  --webroot-path=/var/www/certbot \
+  --email "$CLOUDFLARE_EMAIL" \
+  --agree-tos \
+  --no-eff-email \
+  --force-renewal \
+  -d "$DOMAIN"
 
-# 安装证书
+# 安装证书（将证书拷贝到 Nginx 所在的路径）
 echo "安装 SSL 证书..."
-~/.acme.sh/acme.sh --install-cert -d "$DOMAIN" \
-    --key-file /etc/letsencrypt/live/$DOMAIN/privkey.pem \
-    --fullchain-file /etc/letsencrypt/live/$DOMAIN/fullchain.pem
+cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem ./certs/fullchain.pem
+cp /etc/letsencrypt/live/$DOMAIN/privkey.pem ./certs/privkey.pem
 
 # 启动 Docker Compose 服务
 echo "启动 Docker Compose 服务..."
+cd /root/wenruo/docker-wordpress
 docker-compose up -d
 
 # 输出证书路径和代理路径以便在 x-ui 面板中使用
@@ -231,8 +223,9 @@ echo "请将上述路径填写到 x-ui 面板中的证书和私钥字段。"
 echo "伪装站点博客访问地址: https://$DOMAIN"
 echo "代理流量路径为: $PROXY_URL"
 
-# 添加 acme.sh 自动续期
-echo "正在设置 acme.sh 自动续期..."
-(crontab -l 2>/dev/null; echo "0 0 * * * /root/.acme.sh/acme.sh --renew -d $DOMAIN --key-file /etc/letsencrypt/live/$DOMAIN/privkey.pem --fullchain-file /etc/letsencrypt/live/$DOMAIN/fullchain.pem > /var/log/acme_renew.log 2>&1") | crontab -
+# 添加 Certbot 自动续期
+echo "正在设置 Certbot 自动续期..."
+(crontab -l 2>/dev/null; echo "0 0 * * * docker run --rm -v /etc/letsencrypt:/etc/letsencrypt -v /root/wenruo/docker-wordpress/certbot:/var/www/certbot certbot/certbot renew --quiet") | crontab -
 
-echo "acme.sh 自动续期已设置成功！"
+echo "Certbot 自动续期已设置成功！"
+
