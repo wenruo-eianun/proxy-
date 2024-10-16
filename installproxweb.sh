@@ -209,8 +209,14 @@ chmod 600 certbot/cloudflare.ini
 docker-compose up -d
 
 # 申请 SSL 证书
-docker-compose run --rm certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/conf/cloudflare.ini -d $DOMAIN
+echo "申请 SSL 证书..."
+docker-compose run --rm certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/conf/cloudflare.ini -d "$DOMAIN" --non-interactive --agree-tos --email "$CLOUDFLARE_EMAIL"
 
+# 检查申请结果
+if [ $? -ne 0 ]; then
+    echo "SSL证书申请失败，请检查日志。"
+    exit 1
+fi
 # 重启 Nginx 以启用 SSL
 docker-compose restart nginx
 
