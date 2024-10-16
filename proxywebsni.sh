@@ -64,6 +64,23 @@ else
     echo "Docker Compose 已安装，跳过安装步骤。"
 fi
 
+# 确保安装 certbot 和 dns-cloudflare 插件
+if ! [ -x "$(command -v certbot)" ]; then
+    echo "Certbot 未安装，正在安装 Certbot..."
+    if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
+        sudo apt install -y certbot python3-certbot-dns-cloudflare
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
+        sudo yum install -y certbot python3-certbot-dns-cloudflare
+    elif [ "$OS" = "fedora" ]; then
+        sudo dnf install -y certbot python3-certbot-dns-cloudflare
+    else
+        echo "不支持的操作系统，请手动安装 Certbot 和 dns-cloudflare 插件。"
+        exit 1
+    fi
+else
+    echo "Certbot 已安装，跳过安装步骤。"
+fi
+
 # 获取用户输入
 read -p "请输入服务器解析的域名 (例如 example.com): " DOMAIN
 read -p "请输入博客所使用的端口 (80 或 443): " PORT
