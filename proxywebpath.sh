@@ -206,6 +206,16 @@ server {
 }
 EOL
 
+# 启动 Docker Compose 服务
+echo "启动 Docker Compose 服务..."
+cd wenruo/docker-wordpress
+docker-compose up -d
+
+# 检查容器状态
+echo "正在检查容器状态..."
+docker ps
+
+echo "所有服务已启动。如果你遇到任何问题，请使用 'docker-compose logs' 检查日志。"
 # 创建 Cloudflare API 凭据文件
 mkdir -p ~/.secrets/certbot
 cat <<EOL > ~/.secrets/certbot/cloudflare.ini
