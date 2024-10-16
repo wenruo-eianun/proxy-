@@ -187,29 +187,19 @@ server {
     }
 }
 EOL
-# 申请 SSL 证书
+
+# 创建 Cloudflare API 凭据文件
+mkdir -p ~/.secrets/certbot
+cat <<EOL > ~/.secrets/certbot/cloudflare.ini
+dns_cloudflare_email = "$CLOUDFLARE_EMAIL"
+dns_cloudflare_api_key = "$CLOUDFLARE_API_KEY"
+EOL
+
+chmod 600 ~/.secrets/certbot/cloudflare.ini
+
+# 申请 SSL 证书（使用 DNS-01 验证）
 echo "申请 SSL 证书..."
-docker run -it --rm \
-  -v /etc/letsencrypt:/etc/letsencrypt \
-  -v $(pwd)/certbot:/var/www/certbot \
-  certbot/certbot certonly \
-  --webroot \
-  --webroot-path=/var/www/certbot \
-  --email "$CLOUDFLARE_EMAIL" \
-  --agree-tos \
-  --no-eff-email \
-  --force-renewal \
-  -d "$DOMAIN"
-
-# 安装证书（将证书拷贝到 Nginx 所在的路径）
-echo "安装 SSL 证书..."
-cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem ./certs/fullchain.pem
-cp /etc/letsencrypt/live/$DOMAIN/privkey.pem ./certs/privkey.pem
-
-# 启动 Docker Compose 服务
-echo "启动 Docker Compose 服务..."
-cd /root/wenruo/docker-wordpress
-docker-compose up -d
+certbot certonly --dns-cloudflare --dns-cloudflare-credentials ~/.secrets/certbot/cloudflare.ini --email "$CLOUDFLARE_EMAIL" --agree-tos --no-eff-email -d "$DOMAIN"
 
 # 输出证书路径和代理路径以便在 x-ui 面板中使用
 CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
@@ -222,10 +212,3 @@ echo "私钥路径: $KEY_PATH"
 echo "请将上述路径填写到 x-ui 面板中的证书和私钥字段。"
 echo "伪装站点博客访问地址: https://$DOMAIN"
 echo "代理流量路径为: $PROXY_URL"
-
-# 添加 Certbot 自动续期
-echo "正在设置 Certbot 自动续期..."
-(crontab -l 2>/dev/null; echo "0 0 * * * docker run --rm -v /etc/letsencrypt:/etc/letsencrypt -v /root/wenruo/docker-wordpress/certbot:/var/www/certbot certbot/certbot renew --quiet") | crontab -
-
-echo "Certbot 自动续期已设置成功！"
-
