@@ -130,6 +130,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./certs:/etc/letsencrypt/live/$DOMAIN
+      - ./certbot:/var/www/certbot  # 挂载 certbot 的目录
       - wordpress_data:/wenruo/wordpress
     ports:
       - "8082:80"
