@@ -206,16 +206,7 @@ server {
 }
 EOL
 
-# 启动 Docker Compose 服务
-echo "启动 Docker Compose 服务..."
-cd wenruo/docker-wordpress
-docker-compose up -d
 
-# 检查容器状态
-echo "正在检查容器状态..."
-docker ps
-
-echo "所有服务已启动。如果你遇到任何问题，请使用 'docker-compose logs' 检查日志。"
 # 创建 Cloudflare API 凭据文件
 mkdir -p ~/.secrets/certbot
 cat <<EOL > ~/.secrets/certbot/cloudflare.ini
@@ -233,6 +224,16 @@ CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
 KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
 PROXY_URL="https://$DOMAIN$PROXY_PATH"
 
+# 启动 Docker Compose 服务
+echo "启动 Docker Compose 服务..."
+cd wenruo/docker-wordpress
+docker-compose up -d
+
+# 检查容器状态
+echo "正在检查容器状态..."
+docker ps
+
+echo "所有服务已启动。如果你遇到任何问题，请使用 'docker-compose logs' 检查日志。"
 echo "SSL证书已申请成功并配置！"
 echo "证书路径: $CERT_PATH"
 echo "私钥路径: $KEY_PATH"
