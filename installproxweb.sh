@@ -3,24 +3,60 @@
 # 设置错误处理：脚本遇到错误立即退出
 set -e
 
+# 检查系统发行版
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$ID
+else
+    echo "无法确定系统类型，请手动安装 Docker 和 Docker Compose。"
+    exit 1
+fi
+
+# 更新包管理器并安装必要的工具（curl 和其他工具）
+echo "检测到系统类型为 $OS，正在安装必要的工具..."
+
+if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
+    sudo apt update
+    sudo apt install -y curl apt-transport-https ca-certificates gnupg lsb-release
+elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
+    sudo yum install -y curl yum-utils
+elif [ "$OS" = "fedora" ]; then
+    sudo dnf install -y curl
+else
+    echo "不支持的操作系统，请手动安装 Docker 和 Docker Compose。"
+    exit 1
+fi
+
 # 检查并安装 Docker
 if ! [ -x "$(command -v docker)" ]; then
-  echo "Docker 未安装，正在安装 Docker..."
-  curl -fsSL https://get.docker.com -o get-docker.sh
-  sh get-docker.sh
-  rm get-docker.sh
+    echo "Docker 未安装，正在安装 Docker..."
+    if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt update
+        sudo apt install -y docker-ce docker-ce-cli containerd.io
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
+        sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        sudo yum install -y docker-ce docker-ce-cli containerd.io
+    elif [ "$OS" = "fedora" ]; then
+        sudo dnf install -y dnf-plugins-core
+        sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+        sudo dnf install -y docker-ce docker-ce-cli containerd.io
+    fi
+    sudo systemctl start docker
+    sudo systemctl enable docker
 else
-  echo "Docker 已安装，跳过安装步骤。"
+    echo "Docker 已安装，跳过安装步骤。"
 fi
 
 # 检查并安装 Docker Compose
 if ! [ -x "$(command -v docker-compose)" ]; then
-  echo "Docker Compose 未安装，正在安装 Docker Compose..."
-  curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  chmod +x /usr/local/bin/docker-compose
-  ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+    echo "Docker Compose 未安装，正在安装 Docker Compose..."
+    sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+    sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
 else
-  echo "Docker Compose 已安装，跳过安装步骤。"
+    echo "Docker Compose 已安装，跳过安装步骤。"
 fi
 
 # 获取用户输入
@@ -84,7 +120,7 @@ services:
       - ./certs:/etc/letsencrypt
       - ./certbot/conf:/etc/letsencrypt/conf
       - ./certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait \$${!}; done;'"
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h; done;'"
 
 volumes:
   db_data:
@@ -176,9 +212,11 @@ docker-compose restart nginx
 # 输出证书路径和代理路径以便在 x-ui 面板中使用
 CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
 KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+PROXY_URL="https://$DOMAIN$PROXY_PATH"
 
 echo "SSL证书已申请成功并配置！"
 echo "证书路径: $CERT_PATH"
 echo "私钥路径: $KEY_PATH"
 echo "请将上述路径填写到 x-ui 面板中的证书和私钥字段。"
-echo "代理路径为: $PROXY_PATH"
+echo "伪装站点博客访问地址: https://$DOMAIN"
+echo "代理流量路径为: $PROXY_URL"
