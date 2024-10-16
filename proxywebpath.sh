@@ -226,7 +226,6 @@ PROXY_URL="https://$DOMAIN$PROXY_PATH"
 
 # 启动 Docker Compose 服务
 echo "启动 Docker Compose 服务..."
-cd wenruo/docker-wordpress
 docker-compose up -d
 
 # 检查容器状态
