@@ -229,3 +229,9 @@ echo "私钥路径: $KEY_PATH"
 echo "请将上述路径填写到 x-ui 面板中的证书和私钥字段。"
 echo "伪装站点博客访问地址: https://$DOMAIN"
 echo "代理流量路径为: $PROXY_URL"
+# 设置自动续期
+echo "正在设置 Certbot 自动续期..."
+(crontab -l 2>/dev/null; echo "0 0 * * * certbot renew --quiet") | crontab -
+
+echo "Certbot 自动续期已设置成功！"
+
