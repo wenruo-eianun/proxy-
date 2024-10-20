@@ -17,13 +17,13 @@ echo "检测到系统类型为 $OS，正在安装必要的工具..."
 
 if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
     sudo apt update
-    sudo apt install -y curl apt-transport-https ca-certificates gnupg lsb-release certbot python3-certbot-dns-cloudflare
+    sudo apt install -y curl apt-transport-https ca-certificates gnupg lsb-release
 elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
-    sudo yum install -y curl yum-utils certbot python3-certbot-dns-cloudflare
+    sudo yum install -y curl yum-utils
 elif [ "$OS" = "fedora" ]; then
-    sudo dnf install -y curl certbot python3-certbot-dns-cloudflare
+    sudo dnf install -y curl
 else
-    echo "不支持的操作系统，请手动安装 Docker、Docker Compose 和 Certbot。"
+    echo "不支持的操作系统，请手动安装 Docker 和 Docker Compose。"
     exit 1
 fi
 
@@ -51,19 +51,22 @@ fi
 # 获取用户输入
 read -p "请输入服务器解析的域名 (例如 example.com): " DOMAIN
 read -p "请输入Docker Nginx HTTP端口 (例如 8080): " HTTP_PORT
-read -p "请输入Docker Nginx HTTPS端口 (例如 8443): " HTTPS_PORT
 read -p "请输入代理路径 (例如 /vless): " PROXY_PATH
 read -p "请输入代理服务器的IP地址: " PROXY_IP
 read -p "请输入代理服务器的端口: " PROXY_PORT
-read -p "请输入Cloudflare的注册邮箱: " CLOUDFLARE_EMAIL
-read -p "请输入Cloudflare的Global API Key: " CLOUDFLARE_API_KEY
 
 # 获取服务器IP地址
 SERVER_IP=$(curl -s ifconfig.me)
 
-# 创建项目文件夹
-mkdir -p wenruo/docker-wordpress/{nginx,wordpress,certbot}
-cd wenruo/docker-wordpress
+# 创建项目文件夹并设置权限
+mkdir -p wenruo/docker-typecho/{nginx,typecho}
+chmod -R 0777 wenruo
+cd wenruo/docker-typecho
+
+# 下载 Typecho
+curl -L https://github.com/typecho/typecho/releases/latest/download/typecho.zip -o typecho.zip
+unzip typecho.zip -d ./typecho
+rm typecho.zip
 
 # 创建 docker-compose.yml 文件
 cat <<EOL > docker-compose.yml
@@ -76,48 +79,30 @@ services:
       - db_data:/var/lib/mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: somewordpress
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: wordpress
-      MYSQL_PASSWORD: wordpress
+      MYSQL_ROOT_PASSWORD: sometypecho
+      MYSQL_DATABASE: typecho
+      MYSQL_USER: typecho
+      MYSQL_PASSWORD: typecho
 
-  wordpress:
-    depends_on:
-      - db
-    image: wordpress:latest
+  typecho:
+    image: php:7.4-fpm
     volumes:
-      - wordpress_data:/var/www/html
+      - ./typecho:/var/www/html
     restart: always
-    environment:
-      WORDPRESS_DB_HOST: db:3306
-      WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: wordpress
-      WORDPRESS_DB_NAME: wordpress
 
   nginx:
     image: nginx:latest
     ports:
       - "${HTTP_PORT}:80"
-      - "${HTTPS_PORT}:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
-      - wordpress_data:/var/www/html
+      - ./typecho:/var/www/html
     depends_on:
-      - wordpress
+      - typecho
     restart: always
-
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait \$\${!}; done;'"
 
 volumes:
   db_data:
-  wordpress_data:
 EOL
 
 # 创建 nginx.conf 文件
@@ -152,22 +137,6 @@ http {
     server {
         listen 80;
         server_name $DOMAIN;
-        
-        location /.well-known/acme-challenge/ {
-            root /var/www/certbot;
-        }
-
-        location / {
-            return 301 https://\$host\$request_uri;
-        }
-    }
-
-    server {
-        listen 443 ssl;
-        server_name $DOMAIN;
-
-        ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
 
         root /var/www/html;
         index index.php;
@@ -177,7 +146,7 @@ http {
         }
 
         location ~ \.php$ {
-            fastcgi_pass wordpress:9000;
+            fastcgi_pass typecho:9000;
             fastcgi_index index.php;
             include fastcgi_params;
             fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
@@ -195,34 +164,18 @@ http {
 }
 EOL
 
-# 创建 Cloudflare API 凭据文件
-mkdir -p ~/.secrets/certbot
-cat <<EOL > ~/.secrets/certbot/cloudflare.ini
-dns_cloudflare_email = "$CLOUDFLARE_EMAIL"
-dns_cloudflare_api_key = "$CLOUDFLARE_API_KEY"
-EOL
-
-chmod 600 ~/.secrets/certbot/cloudflare.ini
-
-# 申请 SSL 证书（使用 DNS-01 验证）
-echo "申请 SSL 证书..."
-sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials ~/.secrets/certbot/cloudflare.ini --email "$CLOUDFLARE_EMAIL" --agree-tos --no-eff-email --preferred-challenges dns -d "$DOMAIN"
-
-# 复制证书到 certbot 目录
-sudo mkdir -p ./certbot/conf/live/$DOMAIN
-sudo cp /etc/letsencrypt/live/$DOMAIN/* ./certbot/conf/live/$DOMAIN/
-
-# 设置自动续期
-echo "正在设置 Certbot 自动续期..."
-(crontab -l 2>/dev/null; echo "0 0 1 * * docker-compose run certbot renew --quiet --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/certbot/cloudflare.ini && docker-compose exec nginx nginx -s reload") | crontab -
-
 # 启动 Docker Compose
 sudo docker-compose up -d
 
+# 设置 Typecho 目录权限
+sudo chmod -R 0777 ./typecho
+
 echo "伪装网站已成功搭建！"
 echo "请确保您的域名 $DOMAIN 已正确解析到服务器IP。"
-echo "WordPress网站地址: https://$DOMAIN:$HTTPS_PORT"
-echo "伪装的代理路径: https://$DOMAIN:$HTTPS_PORT$PROXY_PATH"
+echo "Typecho网站地址: http://$DOMAIN:$HTTP_PORT"
+echo "伪装的代理路径: http://$DOMAIN:$HTTP_PORT$PROXY_PATH"
 echo "服务器IP地址: $SERVER_IP"
 echo "HTTP端口: $HTTP_PORT"
-echo "HTTPS端口: $HTTPS_PORT"
+echo "代理服务器IP: $PROXY_IP"
+echo "代理服务器端口: $PROXY_PORT"
+echo "请访问 http://$DOMAIN:$HTTP_PORT 完成 Typecho 的安装配置。"
