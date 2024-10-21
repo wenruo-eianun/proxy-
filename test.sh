@@ -4,14 +4,17 @@ set -e
 # 检测系统并安装必要的软件
 if [ -f /etc/debian_version ]; then
     apt update
-    apt install -y curl wget sudo socat
+    apt install -y curl wget sudo socat python3-pip
 elif [ -f /etc/redhat-release ]; then
     yum update -y
-    yum install -y curl wget sudo socat
+    yum install -y curl wget sudo socat python3-pip
 else
     echo "不支持的操作系统"
     exit 1
 fi
+
+# 确保 pip 是最新版本
+pip3 install --upgrade pip
 
 # 安装 Docker
 if ! command -v docker &> /dev/null; then
@@ -26,17 +29,11 @@ if ! command -v docker-compose &> /dev/null; then
     chmod +x /usr/local/bin/docker-compose
 fi
 
-# 安装 Certbot
-if ! command -v certbot &> /dev/null; then
-    if [ -f /etc/debian_version ]; then
-        apt install -y certbot python3-certbot-nginx
-    elif [ -f /etc/redhat-release ]; then
-        yum install -y certbot python3-certbot-nginx
-    fi
-fi
+# 使用 pip 安装 Certbot 和 Cloudflare 插件
+pip3 install certbot certbot-nginx certbot-dns-cloudflare
 
-# 安装 Certbot Cloudflare 插件
-pip3 install certbot-dns-cloudflare
+# 创建 certbot 命令的软链接
+ln -sf /usr/local/bin/certbot /usr/bin/certbot
 
 # 获取用户输入
 read -p "请输入服务器解析的域名 (例如 example.com): " DOMAIN
