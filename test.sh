@@ -66,7 +66,7 @@ services:
   db:
     image: mysql:5.7
     volumes:
-      - db_data:/var/lib/mysql
+      - db_data:/wenruo/mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: somewordpress
@@ -79,7 +79,7 @@ services:
       - db
     image: wordpress:latest
     volumes:
-      - wordpress_data:/wenruo/mysql
+      - wordpress_data:/wenruo/wordpress
     restart: always
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -121,7 +121,7 @@ cat > /wenruo/wordpress/error_pages/error.html <<EOL
 EOL
 
 # 创建 Nginx 配置文件
-cat <<EOL > nginx/nginx.conf
+cat <<EOL > wenruo/wordpress/nginx.conf
 server {
     listen 80;
     server_name $DOMAIN;
@@ -190,6 +190,6 @@ echo "安装完成！"
 echo "SSL证书路径: $CERT_PATH"
 echo "SSL私钥路径: $KEY_PATH"
 echo "请将上述路径填写到 x-ui 面板中的证书和私钥字段。"
-echo "WordPress 博客访问地址: https://$DOMAIN"
+echo "WordPress 博客访问地址: https://$DOMAIN:$PORT"
 echo "代理服务访问地址: $PROXY_URL"
 echo "请确保您的代理服务正在监听 127.0.0.1:$PORT"
