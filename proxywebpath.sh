@@ -144,7 +144,8 @@ EOL
 
 # 创建 nginx.conf 文件，添加路径分流规则
 cat <<EOL > nginx/nginx.conf
-server {
+http {
+ server {
     listen 80;
     server_name $DOMAIN;
 
@@ -203,6 +204,7 @@ server {
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
     }
+}
 }
 EOL
 
