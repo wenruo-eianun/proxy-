@@ -121,6 +121,7 @@ cat > /wenruo/wordpress/error_pages/error.html <<EOL
 EOL
 
 # 创建 Nginx 配置文件
+mkdir -p wenruo/wordpress  # 确保目录存在
 cat <<EOL > wenruo/wordpress/nginx.conf
 server {
     listen 80;
