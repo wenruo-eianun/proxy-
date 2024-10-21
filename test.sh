@@ -1,77 +1,61 @@
 #!/bin/bash
-
-# 设置错误处理：脚本遇到错误立即退出
 set -e
 
-# 检查系统发行版
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    OS=$ID
+# 检测系统并安装必要的软件
+if [ -f /etc/debian_version ]; then
+    apt update
+    apt install -y curl wget sudo socat
+elif [ -f /etc/redhat-release ]; then
+    yum update -y
+    yum install -y curl wget sudo socat
 else
-    echo "无法确定系统类型，请手动安装 Docker 和 Docker Compose。"
+    echo "不支持的操作系统"
     exit 1
 fi
 
-# 更新包管理器并安装必要的工具
-echo "检测到系统类型为 $OS，正在安装必要的工具..."
-
-if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
-    sudo apt update
-    sudo apt install -y curl apt-transport-https ca-certificates gnupg lsb-release
-elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
-    sudo yum install -y curl yum-utils
-elif [ "$OS" = "fedora" ]; then
-    sudo dnf install -y curl
-else
-    echo "不支持的操作系统，请手动安装 Docker 和 Docker Compose。"
-    exit 1
+# 安装 Docker
+if ! command -v docker &> /dev/null; then
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable docker
+    systemctl start docker
 fi
 
-# 检查并安装 Docker
-if ! [ -x "$(command -v docker)" ]; then
-    echo "Docker 未安装，正在安装 Docker..."
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
-    sudo systemctl start docker
-    sudo systemctl enable docker
-else
-    echo "Docker 已安装，跳过安装步骤。"
+# 安装 Docker Compose
+if ! command -v docker-compose &> /dev/null; then
+    curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
 fi
 
-# 检查并安装 Docker Compose
-if ! [ -x "$(command -v docker-compose)" ]; then
-    echo "Docker Compose 未安装，正在安装 Docker Compose..."
-    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
-    sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
-else
-    echo "Docker Compose 已安装，跳过安装步骤。"
+# 安装 Certbot
+if ! command -v certbot &> /dev/null; then
+    if [ -f /etc/debian_version ]; then
+        apt install -y certbot python3-certbot-nginx
+    elif [ -f /etc/redhat-release ]; then
+        yum install -y certbot python3-certbot-nginx
+    fi
 fi
+
+# 安装 Certbot Cloudflare 插件
+pip3 install certbot-dns-cloudflare
 
 # 获取用户输入
 read -p "请输入服务器解析的域名 (例如 example.com): " DOMAIN
-read -p "请输入Docker Nginx HTTP端口 (例如 8080): " HTTP_PORT
-read -p "请输入代理路径 (例如 /vless): " PROXY_PATH
-read -p "请输入代理服务器的IP地址: " PROXY_IP
-read -p "请输入代理服务器的端口: " PROXY_PORT
+read -p "请输入博客和代理服务使用的端口 (通常为 443): " PORT
+read -p "请输入Cloudflare的注册邮箱: " CLOUDFLARE_EMAIL
+read -p "请输入Cloudflare的Global API Key: " CLOUDFLARE_API_KEY
 
-# 获取服务器IP地址
-SERVER_IP=$(curl -s ifconfig.me)
+# 创建 Cloudflare 配置文件
+mkdir -p ~/.secrets/certbot
+cat > ~/.secrets/certbot/cloudflare.ini <<EOL
+dns_cloudflare_email = $CLOUDFLARE_EMAIL
+dns_cloudflare_api_key = $CLOUDFLARE_API_KEY
+EOL
+chmod 600 ~/.secrets/certbot/cloudflare.ini
 
-# 创建项目文件夹并设置权限
-mkdir -p wenruo/docker-typecho/{nginx,typecho}
-chmod -R 0777 wenruo
-cd wenruo/docker-typecho
-
-# 下载 Typecho
-curl -L https://github.com/typecho/typecho/releases/latest/download/typecho.zip -o typecho.zip
-unzip typecho.zip -d ./typecho
-rm typecho.zip
-
-# 创建 docker-compose.yml 文件
-cat <<EOL > docker-compose.yml
+# 创建 Docker Compose 配置文件
+mkdir -p wordpress
+cat > wordpress/docker-compose.yml <<EOL
 version: '3'
-
 services:
   db:
     image: mysql:5.7
@@ -79,103 +63,127 @@ services:
       - db_data:/var/lib/mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: sometypecho
-      MYSQL_DATABASE: typecho
-      MYSQL_USER: typecho
-      MYSQL_PASSWORD: typecho
+      MYSQL_ROOT_PASSWORD: somewordpress
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
 
-  typecho:
-    image: php:7.4-fpm
+  wordpress:
+    depends_on:
+      - db
+    image: wordpress:latest
     volumes:
-      - ./typecho:/var/www/html
+      - wordpress_data:/var/www/html
     restart: always
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
 
   nginx:
     image: nginx:latest
     ports:
-      - "${HTTP_PORT}:80"
+      - "80:80"
+      - "$PORT:$PORT"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./typecho:/var/www/html
-    depends_on:
-      - typecho
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./error_pages:/etc/nginx/error_pages
+      - /etc/letsencrypt:/etc/letsencrypt
+      - wordpress_data:/wenruo/wordpress
     restart: always
+    depends_on:
+      - wordpress
 
 volumes:
   db_data:
+  wordpress_data:
 EOL
 
-# 创建 nginx.conf 文件
-cat <<EOL > nginx/nginx.conf
-user  nginx;
-worker_processes  auto;
+# 创建自定义错误页面
+mkdir -p wordpress/error_pages
+cat > wordpress/error_pages/error.html <<EOL
+<!DOCTYPE html>
+<html>
+<head>
+    <title>资源暂时不可用</title>
+</head>
+<body>
+    <h1>抱歉，请求的资源暂时不可用</h1>
+    <p>请稍后再试。如果问题持续存在，请联系网站管理员。</p>
+</body>
+</html>
+EOL
 
-error_log  /var/log/nginx/error.log warn;
-pid        /var/run/nginx.pid;
-
-events {
-    worker_connections  1024;
+# 创建 Nginx 配置文件
+cat > wordpress/nginx.conf <<EOL
+server {
+    listen 80;
+    server_name $DOMAIN;
+    return 301 https://\$host\$request_uri;
 }
 
-http {
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
+server {
+    listen $PORT ssl;
+    server_name $DOMAIN;
 
-    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
-                      '\$status \$body_bytes_sent "\$http_referer" '
-                      '"\$http_user_agent" "\$http_x_forwarded_for"';
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
 
-    access_log  /var/log/nginx/access.log  main;
+    root /wenruo/wordpress;
+    index index.php index.html index.htm;
 
-    sendfile        on;
-    #tcp_nopush     on;
+    location / {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
 
-    keepalive_timeout  65;
+    location ~ \.php$ {
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+    }
 
-    #gzip  on;
-
-    server {
-        listen 80;
-        server_name $DOMAIN;
-
-        root /var/www/html;
-        index index.php;
-
-        location / {
-            try_files \$uri \$uri/ /index.php?\$args;
+    # 代理服务配置
+    location /resources {
+        if (\$http_upgrade != "websocket") {
+            return 301 /;
         }
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        error_page 502 = /error.html;
+    }
 
-        location ~ \.php$ {
-            fastcgi_pass typecho:9000;
-            fastcgi_index index.php;
-            include fastcgi_params;
-            fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-            fastcgi_param PATH_INFO \$fastcgi_path_info;
-        }
-
-        location $PROXY_PATH {
-            proxy_pass http://${PROXY_IP}:${PROXY_PORT};
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
-            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto \$scheme;
-        }
+    location = /error.html {
+        root /etc/nginx/error_pages;
+        internal;
     }
 }
 EOL
 
+# 申请 SSL 证书
+certbot certonly --dns-cloudflare --dns-cloudflare-credentials ~/.secrets/certbot/cloudflare.ini --email "$CLOUDFLARE_EMAIL" --agree-tos --no-eff-email --preferred-challenges dns -d "$DOMAIN"
+
 # 启动 Docker Compose
-sudo docker-compose up -d
+cd wordpress
+docker-compose up -d
 
-# 设置 Typecho 目录权限
-sudo chmod -R 0777 ./typecho
+# 设置 Certbot 自动续期
+(crontab -l 2>/dev/null; echo "0 0 1 * * certbot renew --quiet --deploy-hook 'docker exec wordpress_nginx_1 nginx -s reload'") | crontab -
 
-echo "伪装网站已成功搭建！"
-echo "请确保您的域名 $DOMAIN 已正确解析到服务器IP。"
-echo "Typecho网站地址: http://$DOMAIN:$HTTP_PORT"
-echo "伪装的代理路径: http://$DOMAIN:$HTTP_PORT$PROXY_PATH"
-echo "服务器IP地址: $SERVER_IP"
-echo "HTTP端口: $HTTP_PORT"
-echo "代理服务器IP: $PROXY_IP"
-echo "代理服务器端口: $PROXY_PORT"
-echo "请访问 http://$DOMAIN:$HTTP_PORT 完成 Typecho 的安装配置。"
+# 输出证书路径和代理信息
+CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+PROXY_URL="https://$DOMAIN/resources"
+
+echo "安装完成！"
+echo "SSL证书路径: $CERT_PATH"
+echo "SSL私钥路径: $KEY_PATH"
+echo "请将上述路径填写到 x-ui 面板中的证书和私钥字段。"
+echo "WordPress 博客访问地址: https://$DOMAIN"
+echo "代理服务访问地址: $PROXY_URL"
+echo "请确保您的代理服务正在监听 127.0.0.1:$PORT"
