@@ -4,17 +4,14 @@ set -e
 # 检测系统并安装必要的软件
 if [ -f /etc/debian_version ]; then
     apt update
-    apt install -y curl wget sudo socat python3-pip
+    apt install -y curl wget sudo socat
 elif [ -f /etc/redhat-release ]; then
     yum update -y
-    yum install -y curl wget sudo socat python3-pip
+    yum install -y curl wget sudo socat
 else
     echo "不支持的操作系统"
     exit 1
 fi
-
-# 确保 pip 是最新版本
-pip3 install --upgrade pip
 
 # 安装 Docker
 if ! command -v docker &> /dev/null; then
@@ -29,11 +26,23 @@ if ! command -v docker-compose &> /dev/null; then
     chmod +x /usr/local/bin/docker-compose
 fi
 
-# 使用 pip 安装 Certbot 和 Cloudflare 插件
-pip3 install certbot certbot-nginx certbot-dns-cloudflare
+# 安装 snapd（如果尚未安装）
+if ! command -v snap &> /dev/null; then
+    if [ -f /etc/debian_version ]; then
+        apt update
+        apt install -y snapd
+    elif [ -f /etc/redhat-release ]; then
+        yum install -y epel-release
+        yum install -y snapd
+        systemctl enable --now snapd.socket
+    fi
+fi
 
-# 创建 certbot 命令的软链接
-ln -sf /usr/local/bin/certbot /usr/bin/certbot
+# 安装 Certbot 和 Cloudflare 插件
+snap install --classic certbot
+ln -sf /snap/bin/certbot /usr/bin/certbot
+snap set certbot trust-plugin-with-root=ok
+snap install certbot-dns-cloudflare
 
 # 获取用户输入
 read -p "请输入服务器解析的域名 (例如 example.com): " DOMAIN
