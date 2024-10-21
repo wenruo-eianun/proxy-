@@ -59,8 +59,8 @@ EOL
 chmod 600 ~/.secrets/certbot/cloudflare.ini
 
 # 创建 Docker Compose 配置文件
-mkdir -p wordpress
-cat > wordpress/docker-compose.yml <<EOL
+mkdir -p wenruo/wordpress
+cat > wenruo/wordpress/docker-compose.yml <<EOL
 version: '3'
 services:
   db:
@@ -79,7 +79,7 @@ services:
       - db
     image: wordpress:latest
     volumes:
-      - wordpress_data:/var/www/html
+      - wordpress_data:/wenruo/mysql
     restart: always
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -106,8 +106,8 @@ volumes:
 EOL
 
 # 创建自定义错误页面
-mkdir -p wordpress/error_pages
-cat > wordpress/error_pages/error.html <<EOL
+mkdir -p /wenruo/wordpress/error_pages
+cat > /wenruo/wordpress/error_pages/error.html <<EOL
 <!DOCTYPE html>
 <html>
 <head>
