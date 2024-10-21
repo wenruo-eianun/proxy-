@@ -176,7 +176,7 @@ EOL
 certbot certonly --dns-cloudflare --dns-cloudflare-credentials ~/.secrets/certbot/cloudflare.ini --email "$CLOUDFLARE_EMAIL" --agree-tos --no-eff-email --preferred-challenges dns -d "$DOMAIN"
 
 # 启动 Docker Compose
-cd wordpress
+cd /root/wenruo/wordpress
 docker-compose up -d
 
 # 设置 Certbot 自动续期
